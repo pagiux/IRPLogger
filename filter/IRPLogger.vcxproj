@@ -92,7 +92,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Link>
       <AdditionalOptions>%(AdditionalOptions) /map</AdditionalOptions>
-      <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib</AdditionalDependencies>
+      <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;$(DDK_LIB_PATH)\libcntpr.lib</AdditionalDependencies>
     </Link>
     <ClCompile>
       <TreatWarningAsError>true</TreatWarningAsError>
@@ -114,7 +114,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Link>
       <AdditionalOptions>%(AdditionalOptions) /map</AdditionalOptions>
-      <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib</AdditionalDependencies>
+      <AdditionalDependencies>%(AdditionalDependencies);$(DDK_LIB_PATH)\fltMgr.lib;$(DDK_LIB_PATH)\libcntpr.lib</AdditionalDependencies>
     </Link>
     <ClCompile>
       <TreatWarningAsError>true</TreatWarningAsError>

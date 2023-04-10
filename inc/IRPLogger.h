@@ -38,7 +38,6 @@ typedef struct _IRPLOGGERVER {
 } IRPLOGGERVER, *PIRPLOGGERVER;
 
 #define MY_MAX_PATH 512
-#define MAX_DATA_BUFFER 2048
 
 //  Name of IRPLogger's name and communication server port
 #define IRPLOGGER_NAME            L"IRPLogger"
@@ -49,7 +48,7 @@ typedef ULONG_PTR FILE_ID;
 typedef _Return_type_success_(return >= 0) LONG NTSTATUS;
 
 //  The maximum size of a record that can be passed from the filter
-#define RECORD_SIZE     1024 + MY_MAX_PATH + MAX_DATA_BUFFER
+#define RECORD_SIZE     1024 + MY_MAX_PATH
 
 //  This defines the type of record buffer this is along with certain flags.
 #define RECORD_TYPE_NORMAL                       0x00000000
@@ -75,10 +74,8 @@ typedef struct _RECORD_DATA {
     ULONG irp_flags;
     ULONG flags;
     UCHAR callback_major_id;
-    UCHAR callback_minor_id;
-	UCHAR data_buffer[MAX_DATA_BUFFER];
+	UCHAR callback_minor_id;
 	ULONG data_len;
-	ULONG original_len;
     UCHAR reserved[2];      // Alignment on IA64
     PVOID Arg1;
     PVOID Arg2;
@@ -88,6 +85,7 @@ typedef struct _RECORD_DATA {
     LARGE_INTEGER Arg6;
     ULONG ecp_count;
     ULONG known_ecp_mask;
+	double entropy;
 } RECORD_DATA, *PRECORD_DATA;
 
 //  What information we actually log.
