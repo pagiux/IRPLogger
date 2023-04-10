@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include "IRPLoggerKernel.h"
 #include "IRPLoggerLog.h"
 #include "IRPLoggerUtils.h"
@@ -533,6 +534,35 @@ Return Value:
 
 #endif
 
+double shannon_entropy(PUCHAR buffer, ULONG size)
+{
+	double M_LOG2E = 1.4426950408889634;
+
+	double entropy = 0.0;
+	ULONG bucket_byte[256] = { 0 };
+	for (ULONG i = 0; i < size; i++)
+	{
+		bucket_byte[buffer[i]]++;
+	}
+
+	XSTATE_SAVE SaveState;
+	__try {
+		KeSaveExtendedProcessorState(XSTATE_MASK_LEGACY, &SaveState);
+		for (ULONG i = 0; i < 256; i++)
+		{
+			if (bucket_byte[i] != 0)
+			{
+				double val = (double)bucket_byte[i] / (double)size;
+				entropy += (-1) * val * log(val) * M_LOG2E;
+			}
+		}
+	}
+	__finally {
+		KeRestoreExtendedProcessorState(&SaveState);
+	}
+	return entropy;
+}
+
 VOID log_pre_operation_data(
 	_In_ PFLT_CALLBACK_DATA data,
 	_In_ PCFLT_RELATED_OBJECTS flt_objects,
@@ -554,11 +584,7 @@ Return Value:
 {
 	PRECORD_DATA record_data = &record_list->log_record.data;
 	PDEVICE_OBJECT dev_obj;
-	PMDL new_mdl = NULL;
-	PVOID new_buf = NULL;
 	NTSTATUS status;
-	PVOID data_buffer = NULL;
-	ULONG data_len = 0;
 
 	status = FltGetDeviceObject(flt_objects->Volume, &dev_obj);
 	if (NT_SUCCESS(status))
@@ -579,87 +605,6 @@ Return Value:
 	record_data->thread_id = (FILE_ID)PsGetCurrentThreadId();
 
 	GetProcessImageName(record_data->process_name);
-
-	// https://github.com/microsoft/Windows-driver-samples/blob/f7eb738097908a1e32ca2a07a605bba0e85ccb95/filesys/miniFilter/swapBuffers/swapBuffers.c#L2029
-	if (record_data->callback_major_id == IRP_MJ_WRITE) {
-		data_len = data->Iopb->Parameters.Write.Length;
-
-		if (data_len > 0) {
-			new_buf = FltAllocatePoolAlignedWithTag(flt_objects->Instance, NonPagedPool, (SIZE_T)data_len, 'bdBS');
-			new_mdl = IoAllocateMdl(new_buf, data_len, FALSE, FALSE, NULL);
-
-			//  setup the MDL for the non-paged pool we just allocated
-			MmBuildMdlForNonPagedPool(new_mdl);
-
-			if (data->Iopb->Parameters.Write.MdlAddress != NULL) {
-				//  This should be a simple MDL. We don't expect chained MDLs this high up the stack
-				FLT_ASSERT(((PMDL)data->Iopb->Parameters.Write.MdlAddress)->Next == NULL);
-				data_buffer = MmGetSystemAddressForMdlSafe(data->Iopb->Parameters.Write.MdlAddress, NormalPagePriority | MdlMappingNoExecute);
-
-			}
-			else {
-				//  There was no MDL defined, use the given buffer address.
-				data_buffer = data->Iopb->Parameters.Write.WriteBuffer;
-			}
-
-			//  Copy the memory, we must do this inside the try/except because we may be using a users buffer address
-			try {
-				record_data->data_len = (data_len > MAX_DATA_BUFFER) ? MAX_DATA_BUFFER : data_len;
-				record_data->original_len = data_len;
-				RtlCopyMemory(new_buf, data_buffer, data_len);
-				RtlCopyMemory(record_data->data_buffer, new_buf, record_data->data_len);
-			} 
-			except(EXCEPTION_EXECUTE_HANDLER) {
-				record_data->data_len = 0;
-			}
-
-			if (new_buf != NULL)
-				FltFreePoolAlignedWithTag(flt_objects->Instance, new_buf, 'bdBS');
-
-			if (new_mdl != NULL)
-				IoFreeMdl(new_mdl);
-
-		}
-	}
-	else if (record_data->callback_major_id == IRP_MJ_READ) {
-		data_len = data->Iopb->Parameters.Read.Length;
-
-		if (data_len > 0) {
-			new_buf = FltAllocatePoolAlignedWithTag(flt_objects->Instance, NonPagedPool, (SIZE_T)data_len, 'bdBS');
-			new_mdl = IoAllocateMdl(new_buf, data_len, FALSE, FALSE, NULL);
-
-			//  setup the MDL for the non-paged pool we just allocated
-			MmBuildMdlForNonPagedPool(new_mdl);
-
-			if (data->Iopb->Parameters.Read.MdlAddress != NULL) {
-				//  This should be a simple MDL. We don't expect chained MDLs this high up the stack
-				FLT_ASSERT(((PMDL)data->Iopb->Parameters.Read.MdlAddress)->Next == NULL);
-				data_buffer = MmGetSystemAddressForMdlSafe(data->Iopb->Parameters.Read.MdlAddress, NormalPagePriority | MdlMappingNoExecute);
-
-			}
-			else {
-				//  There was no MDL defined, use the given buffer address.
-				data_buffer = data->Iopb->Parameters.Read.ReadBuffer;
-			}
-
-			//  Copy the memory, we must do this inside the try/except because we may be using a users buffer address
-			try {
-				record_data->data_len = (data_len > MAX_DATA_BUFFER) ? MAX_DATA_BUFFER : data_len;
-				record_data->original_len = data_len;
-				RtlCopyMemory(new_buf, data_buffer, data_len);
-				RtlCopyMemory(record_data->data_buffer, new_buf, record_data->data_len);
-			}
-			except(EXCEPTION_EXECUTE_HANDLER) {
-				record_data->data_len = 0;
-			}
-
-			if (new_buf != NULL)
-				FltFreePoolAlignedWithTag(flt_objects->Instance, new_buf, 'bdBS');
-
-			if (new_mdl != NULL)
-				IoFreeMdl(new_mdl);
-		}
-	}
 
 	record_data->Arg1 = data->Iopb->Parameters.Others.Argument1;
 	record_data->Arg2 = data->Iopb->Parameters.Others.Argument2;
@@ -689,9 +634,60 @@ Return Value:
 --*/
 {
 	PRECORD_DATA record_data = &record_list->log_record.data;
+	PVOID data_buffer = NULL;
+	ULONG data_len = 0;
 
 	record_data->status = data->IoStatus.Status;
 	record_data->information = data->IoStatus.Information;
+
+	if (record_data->callback_major_id == IRP_MJ_WRITE) {
+		data_len = data->Iopb->Parameters.Write.Length;
+
+		if (data_len > 0) {
+			if (data->Iopb->Parameters.Write.MdlAddress == NULL) { //there's mdl buffer, we use it
+				data_buffer = data->Iopb->Parameters.Write.WriteBuffer;
+			}
+			else {
+				data_buffer = MmGetSystemAddressForMdlSafe(data->Iopb->Parameters.Write.MdlAddress, NormalPagePriority | MdlMappingNoExecute);
+			}
+
+			//  Copy the memory, we must do this inside the try/except because we may be using a users buffer address
+			try {
+				record_data->data_len = data_len;
+				record_data->entropy = shannon_entropy(data_buffer, data_len);
+
+			}
+			except(EXCEPTION_EXECUTE_HANDLER) {
+				record_data->data_len = 0;
+				record_data->entropy = 0.0;
+			}
+		}
+	}
+
+	else if (record_data->callback_major_id == IRP_MJ_READ) {
+		data_len = data->Iopb->Parameters.Read.Length;
+
+		if (data_len > 0) {
+			if (data->Iopb->Parameters.Read.MdlAddress == NULL) { //there's mdl buffer, we use it
+				data_buffer = data->Iopb->Parameters.Read.ReadBuffer;
+			}
+			else {
+				data_buffer = MmGetSystemAddressForMdlSafe(data->Iopb->Parameters.Read.MdlAddress, NormalPagePriority | MdlMappingNoExecute);
+			}
+
+			//  Copy the memory, we must do this inside the try/except because we may be using a users buffer address
+			try {
+				record_data->data_len = data_len;
+				record_data->entropy = shannon_entropy(data_buffer, data_len);
+
+			}
+			except(EXCEPTION_EXECUTE_HANDLER) {
+				record_data->data_len = 0;
+				record_data->entropy = 0.0;
+			}
+		}
+	}
+
 	KeQuerySystemTime(&record_data->completion_time);
 }
 

@@ -688,8 +688,6 @@ Return Value:
     SYSTEMTIME system_time;
     CHAR time[TIME_BUFFER_LENGTH];
     static BOOLEAN did_file_header = FALSE;
-	float entropy = 0.0;
-	DWORD buffersize = 0;
 
     // Is this an Irp or a FastIo?
     if (!did_file_header) {
@@ -727,17 +725,11 @@ Return Value:
 		file
 	);
 
-	// Get entropy from data buffer
-	if (record_data->data_len > 0) {
-		buffersize = record_data->data_len;
-		entropy = shannon_entropy(record_data->data_buffer, record_data->data_len);
-	}
-
 	// Print buffersize
-	fprintf(file, "\t%ld", (DWORD)record_data->original_len);
+	fprintf(file, "\t%ld", (DWORD) record_data->data_len);
 
 	// Print file entropy
-	fprintf(file, "\t%1.12lf", entropy);
+	fprintf(file, "\t%1.12lf", record_data->entropy);
 
 	// Print file name
     fprintf(file, "\t%S", name);
